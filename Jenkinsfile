@@ -40,28 +40,15 @@ pipeline {
                     def imageName = "react-node20:${imageTag}"
                     def containerName = "react_${imageTag}"
                     
-                    // SIMPLE CLEANUP - Just stop and remove any existing react containers
+                    // Cleanup
                     bat "docker stop ${containerName} 2>nul || echo No container to stop"
                     bat "docker rm ${containerName} 2>nul || echo No container to remove"
-                    
-                    // Also stop any container using port 8080
-                    bat '''
-                        for /f "tokens=*" %%i in ('docker ps --format "{{.Names}}" ^| findstr ".*"') do (
-                          docker ps --format "{{.Names}}: {{.Ports}}" | findstr "%%i" | findstr ":8080" >nul
-                          if not errorlevel 1 (
-                            docker stop %%i 2>nul
-                            docker rm %%i 2>nul
-                          )
-                        )
-                    '''
                     
                     // Wait
                     bat 'ping 127.0.0.1 -n 4 > nul'
                     
                     // For main branch, build the Docker image
-                    if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
-                        bat "docker build --no-cache -t ${imageName} ."
-                    }
+                    bat "docker build --no-cache -t ${imageName} ."
                     
                     // Run the container
                     bat "docker run -d -p 8080:80 --name ${containerName} ${imageName}"
@@ -81,14 +68,7 @@ pipeline {
         
         stage('Archive Artifacts') {
             steps {
-                script {
-                    if (env.TAG_NAME) {
-                        bat 'echo Build completed > build.log'
-                        archiveArtifacts artifacts: 'dist/**,*.log', allowEmptyArchive: false
-                    } else {
-                        archiveArtifacts artifacts: 'dist/**', allowEmptyArchive: true
-                    }
-                }
+                archiveArtifacts artifacts: 'dist/**', allowEmptyArchive: true
             }
         }
         
