@@ -40,26 +40,25 @@ pipeline {
                     def imageName = "react-node20:${imageTag}"
                     def containerName = "react_${imageTag}"
                     
-                    // Cleanup: Stop any container using port 8080
+                    // SIMPLE CLEANUP - Just stop and remove any existing react containers
+                    bat "docker stop ${containerName} 2>nul || echo No container to stop"
+                    bat "docker rm ${containerName} 2>nul || echo No container to remove"
+                    
+                    // Also stop any container using port 8080
                     bat '''
-                        for /f "tokens=*" %%i in ('docker ps --format "{{.Names}}" ^| findstr :8080') do (
+                        for /f "tokens=*" %%i in ('docker ps --format "{{.Names}}" ^| findstr ".*"') do (
+                          docker ps --format "{{.Names}}: {{.Ports}}" | findstr "%%i" | findstr ":8080" >nul
+                          if not errorlevel 1 (
                             docker stop %%i 2>nul
                             docker rm %%i 2>nul
+                          )
                         )
                     '''
                     
-                    // Stop and remove old react containers
-                    bat '''
-                        for /f "tokens=*" %%i in ('docker ps -aq --filter "name=react_"') do (
-                            docker stop %%i 2>nul
-                            docker rm %%i 2>nul
-                        )
-                    '''
-                    
-                    // Wait a bit
+                    // Wait
                     bat 'ping 127.0.0.1 -n 4 > nul'
                     
-                    // For main branch and other non-dev, non-tag branches, build the Docker image
+                    // For main branch, build the Docker image
                     if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
                         bat "docker build --no-cache -t ${imageName} ."
                     }
