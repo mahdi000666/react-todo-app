@@ -1,45 +1,76 @@
 pipeline {
     agent any
-    triggers { pollSCM('H/2 * * * *') } // optional: webhook preferred
+    
     stages {
-        stage('Checkout') { steps { checkout scm } }
-        stage('Setup') { steps { bat 'npm ci' } }
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Setup') {
+            steps {
+                bat 'npm ci --prefer-offline'
+            }
+        }
+        
         stage('Build (parallel)') {
             parallel {
                 stage('Build Node18') {
                     steps {
-                        bat 'docker build --build-arg NODE_VERSION=18 -t react-dev-node18:%GIT_COMMIT% .'
+                        script {
+                            def commit = env.GIT_COMMIT.take(7)
+                            bat "docker build --build-arg NODE_VERSION=18 -t react-dev-node18:${commit} ."
+                        }
                     }
                 }
                 stage('Build Node20') {
                     steps {
-                        bat 'docker build --build-arg NODE_VERSION=20 -t react-dev-node20:%GIT_COMMIT% .'
+                        script {
+                            def commit = env.GIT_COMMIT.take(7)
+                            bat "docker build --build-arg NODE_VERSION=20 -t react-dev-node20:${commit} ."
+                        }
                     }
                 }
             }
         }
+        
         stage('Run Docker') {
             steps {
-                bat 'docker run -d -p 8080:80 --name react_dev_%BUILD_NUMBER% react-dev-node20:%GIT_COMMIT%'
+                script {
+                    def commit = env.GIT_COMMIT.take(7)
+                    bat "docker run -d -p 8080:80 --name react_dev_${BUILD_NUMBER} react-dev-node20:${commit}"
+                    bat 'timeout /t 5 /nobreak'
+                }
             }
         }
+        
         stage('Smoke Test') {
             steps {
-                bat 'call smoke-test.bat > smoke.log || (type smoke.log & exit /b 1)'
+                bat 'call smoke-test.bat'
                 archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
             }
         }
+        
         stage('Archive Artifacts') {
             steps {
-                archiveArtifacts artifacts: 'dist/**, build.log', allowEmptyArchive: true
+                bat 'echo Build completed > build.log'
+                archiveArtifacts artifacts: 'dist/**,build.log,smoke.log', allowEmptyArchive: true
             }
         }
+        
         stage('Cleanup') {
             steps {
-                bat """
-                for /F "tokens=*" %%i in ('docker ps -a --filter "name=react_dev_%BUILD_NUMBER%" --format "{{.ID}}"') do docker rm -f %%i
-                """
+                bat "docker stop react_dev_${BUILD_NUMBER} || exit 0"
+                bat "docker rm react_dev_${BUILD_NUMBER} || exit 0"
             }
+        }
+    }
+    
+    post {
+        always {
+            bat 'docker stop react_dev_%BUILD_NUMBER% || exit 0'
+            bat 'docker rm react_dev_%BUILD_NUMBER% || exit 0'
         }
     }
 }

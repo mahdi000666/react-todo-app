@@ -1,8 +1,9 @@
+ARG NODE_VERSION=20
 # Stage 1: build
-FROM node:20-alpine AS builder
+FROM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --prefer-offline
 COPY . .
 RUN npm run build
 
