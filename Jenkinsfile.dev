@@ -3,12 +3,13 @@ pipeline {
     
     environment {
         // --- CONST-CORRECTNESS & EFFICIENCY ---
+        // 1. Define the commit SHA once
         COMMIT_SHA = env.GIT_COMMIT.take(7)
         
-        // DYNAMIC PORT: Base port 8080 + Build Number (prevents port allocation conflicts)
+        // 2. DYNAMIC PORT: Base port 8080 + Build Number (prevents port allocation conflicts for concurrent builds)
         PORT = 8080 + Integer.parseInt(env.BUILD_NUMBER)
         
-        // Define clean, consistent image and container names
+        // 3. Define clean, consistent image and container names
         IMAGE_TAG_18 = "react-dev-node18:${COMMIT_SHA}"
         IMAGE_TAG_20 = "react-dev-node20:${COMMIT_SHA}"
         CONTAINER_NAME = "react-dev-container-${env.BUILD_NUMBER}"
@@ -41,13 +42,13 @@ pipeline {
             parallel {
                 stage('Build Node18') {
                     steps {
-                        // Use defined environment variables for consistent tagging
+                        // Use defined const variable
                         bat "docker build --no-cache --build-arg NODE_VERSION=18 -t ${env.IMAGE_TAG_18} ."
                     }
                 }
                 stage('Build Node20') {
                     steps {
-                        // Use defined environment variables for consistent tagging
+                        // Use defined const variable
                         bat "docker build --no-cache --build-arg NODE_VERSION=20 -t ${env.IMAGE_TAG_20} ."
                     }
                 }
@@ -57,7 +58,7 @@ pipeline {
         stage('Run Docker') {
             steps {
                 script {
-                    // Cleanup previous run container using dynamic name (prevents container conflict)
+                    // Cleanup previous run container using dynamic name
                     bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
                     bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
                     
@@ -70,7 +71,7 @@ pipeline {
         
         stage('Smoke Test') {
             steps {
-                // BUG FIX: Pass the dynamic port number to smoke-test.bat
+                // *** FIX: Pass the dynamic port number to smoke-test.bat ***
                 bat "call smoke-test.bat ${env.PORT}"
                 archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
             }
@@ -100,6 +101,9 @@ pipeline {
         }
         failure {
             echo "✗ Pipeline failed on branch dev"
+        }
+        success {
+            echo "✓ Pipeline completed successfully on branch dev"
         }
     }
 }
