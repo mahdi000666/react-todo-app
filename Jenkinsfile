@@ -52,7 +52,9 @@ pipeline {
                     }
                     
                     bat "docker run -d -p 8080:80 --name ${containerName} ${imageName}"
-                    bat 'timeout /t 5 /nobreak'
+                    
+                    // Wait 5 seconds for container to start
+                    bat 'ping 127.0.0.1 -n 6 > nul'
                 }
             }
         }
@@ -83,12 +85,11 @@ pipeline {
                     def imageTag = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
                     def containerName = "react_${imageTag}"
                     
-                    bat "docker stop ${containerName} || exit 0"
-                    bat "docker rm ${containerName} || exit 0"
+                    bat "docker stop ${containerName} 2>nul || exit 0"
+                    bat "docker rm ${containerName} 2>nul || exit 0"
                     
-                    // Optional: clean up old images
+                    // Optional: clean up old images to save space
                     bat "docker rmi react-node20:${imageTag} 2>nul || exit 0"
-                    bat "docker rmi react-node18:${imageTag} 2>nul || exit 0"
                 }
             }
         }
