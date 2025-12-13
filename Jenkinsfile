@@ -36,24 +36,16 @@ pipeline {
         stage('Run Docker') {
             steps {
                 script {
+                    // Define variables FIRST
                     def imageTag = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
                     def imageName = "react-node20:${imageTag}"
                     def containerName = "react_${imageTag}"
                     
-                    // Cleanup
+                    // Execute commands ONE BY ONE
                     bat "docker stop ${containerName} 2>nul || echo No container to stop"
-                    bat "docker rm ${containerName} 2>nul || echo No container to remove"
-                    
-                    // Wait
                     bat 'ping 127.0.0.1 -n 4 > nul'
-                    
-                    // For main branch, build the Docker image
                     bat "docker build --no-cache -t ${imageName} ."
-                    
-                    // Run the container
                     bat "docker run -d -p 8080:80 --name ${containerName} ${imageName}"
-                    
-                    // Wait for container to start
                     bat 'ping 127.0.0.1 -n 6 > nul'
                 }
             }
