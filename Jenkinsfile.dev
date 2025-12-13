@@ -1,18 +1,19 @@
 pipeline {
     agent any
     
+    // --- CONST-CORRECTNESS & EFFICIENCY: Define all variables once ---
     environment {
-        // --- CONST-CORRECTNESS & EFFICIENCY ---
         // 1. Define the commit SHA once
         COMMIT_SHA = env.GIT_COMMIT.take(7)
         
-        // 2. DYNAMIC PORT: Base port 8080 + Build Number (prevents port allocation conflicts for concurrent builds)
+        // 2. DYNAMIC PORT: Base port 8080 + Build Number (prevents port conflicts)
         PORT = 8080 + Integer.parseInt(env.BUILD_NUMBER)
         
         // 3. Define clean, consistent image and container names
         IMAGE_TAG_18 = "react-dev-node18:${COMMIT_SHA}"
         IMAGE_TAG_20 = "react-dev-node20:${COMMIT_SHA}"
-        CONTAINER_NAME = "react-dev-container-${env.BUILD_NUMBER}"
+        // Unique container name for each build (resolves Conflict error)
+        CONTAINER_NAME = "react_dev_${env.BUILD_NUMBER}" 
     }
 
     stages {
@@ -28,11 +29,9 @@ pipeline {
             }
         }
         
-        // NEW STAGE: Defensive Cleanup for Images (prevents "image already exists" error)
         stage('Cleanup Images') {
             steps {
                 echo "Cleaning up previous image tags to prevent conflicts."
-                // '|| exit 0' ensures the pipeline continues if images don't exist
                 bat "docker rmi ${env.IMAGE_TAG_18} 2>nul || exit 0"
                 bat "docker rmi ${env.IMAGE_TAG_20} 2>nul || exit 0"
             }
@@ -42,13 +41,13 @@ pipeline {
             parallel {
                 stage('Build Node18') {
                     steps {
-                        // Use defined const variable
+                        // Use centralized environment variables (cleaner than defining `commit` locally)
                         bat "docker build --no-cache --build-arg NODE_VERSION=18 -t ${env.IMAGE_TAG_18} ."
                     }
                 }
                 stage('Build Node20') {
                     steps {
-                        // Use defined const variable
+                        // Use centralized environment variables
                         bat "docker build --no-cache --build-arg NODE_VERSION=20 -t ${env.IMAGE_TAG_20} ."
                     }
                 }
@@ -57,21 +56,19 @@ pipeline {
         
         stage('Run Docker') {
             steps {
-                script {
-                    // Cleanup previous run container using dynamic name
-                    bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
-                    bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
-                    
-                    // Deploy using the DYNAMIC PORT and unique CONTAINER_NAME
-                    bat "docker run -d -p ${env.PORT}:80 --name ${env.CONTAINER_NAME} ${env.IMAGE_TAG_20}"
-                    bat 'timeout /t 5 /nobreak'
-                }
+                // Defensive stop/rm using the unique CONTAINER_NAME (resolves current log error)
+                bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
+                bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
+                
+                // Deploy using DYNAMIC PORT and unique CONTAINER_NAME
+                bat "docker run -d -p ${env.PORT}:80 --name ${env.CONTAINER_NAME} ${env.IMAGE_TAG_20}"
+                bat 'timeout /t 5 /nobreak'
             }
         }
         
         stage('Smoke Test') {
             steps {
-                // *** FIX: Pass the dynamic port number to smoke-test.bat ***
+                // FIX: Pass the dynamic port number to smoke-test.bat
                 bat "call smoke-test.bat ${env.PORT}"
                 archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
             }
@@ -86,7 +83,7 @@ pipeline {
         
         stage('Cleanup') {
             steps {
-                // Ensure cleanup uses the unique container name
+                // Final cleanup uses unique CONTAINER_NAME
                 bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
                 bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
             }
@@ -95,7 +92,7 @@ pipeline {
     
     post {
         always {
-            // Final defensive cleanup using the unique container name
+            // Defensive cleanup using unique CONTAINER_NAME
             bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
             bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
         }
