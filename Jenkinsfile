@@ -40,22 +40,24 @@ pipeline {
                     def imageName = "react-node20:${imageTag}"
                     def containerName = "react_${imageTag}"
                     
-                    // Cleanup: Stop and remove any containers using port 8080
-                    bat 'for /f "tokens=*" %%i in (\'docker ps -q --filter publish=8080\') do docker stop %%i 2>nul'
-                    bat 'for /f "tokens=*" %%i in (\'docker ps -aq --filter name=react_\') do (docker stop %%i 2>nul & docker rm %%i 2>nul)'
+                    // Cleanup: Stop any container using port 8080
+                    bat '''
+                        for /f "tokens=*" %%i in ('docker ps --format "{{.Names}}" ^| findstr :8080') do (
+                            docker stop %%i 2>nul
+                            docker rm %%i 2>nul
+                        )
+                    '''
+                    
+                    // Stop and remove old react containers
+                    bat '''
+                        for /f "tokens=*" %%i in ('docker ps -aq --filter "name=react_"') do (
+                            docker stop %%i 2>nul
+                            docker rm %%i 2>nul
+                        )
+                    '''
                     
                     // Wait a bit
                     bat 'ping 127.0.0.1 -n 4 > nul'
-                    
-                    // Check if port 8080 is still in use (not Docker)
-                    bat '''
-                        netstat -aon | findstr :8080 >nul
-                        if not errorlevel 1 (
-                            echo Port 8080 is in use, killing process...
-                            for /f "tokens=5" %%i in ('netstat -aon ^| findstr :8080') do taskkill /F /PID %%i
-                            ping 127.0.0.1 -n 3 > nul
-                        )
-                    '''
                     
                     // For main branch and other non-dev, non-tag branches, build the Docker image
                     if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
