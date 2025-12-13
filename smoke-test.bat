@@ -14,7 +14,7 @@ curl -sf %URL% >nul 2>&1
 if !ERRORLEVEL! EQU 0 goto PASSED
 
 set /A RETRY+=1
-timeout /t 1 /nobreak >nul
+ping 127.0.0.1 -n 2 >nul
 goto RETRY_LOOP
 
 :PASSED
