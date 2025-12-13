@@ -2,10 +2,12 @@ pipeline {
     agent any
     
     environment {
-        // Use const-like variables for consistency
-        IMAGE_NAME = "react-todo"
-        IMAGE_TAG  = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
-        PORT       = "8080"
+        // Use a unique name for the container based on the branch
+        // e.g., react-todo-main-container or react-todo-dev-container
+        CONTAINER_NAME = "react-todo-${env.BRANCH_NAME}-container" 
+        IMAGE_NAME     = "react-todo"
+        IMAGE_TAG      = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
+        PORT           = "8080"
     }
 
     stages {
@@ -25,12 +27,12 @@ pipeline {
         stage('Deploy (Local)') {
             steps {
                 script {
-                    // Clean up specifically the previous container name to avoid conflicts
-                    // '|| exit 0' ensures the pipeline continues if container doesn't exist
-                    bat "docker stop ${IMAGE_NAME}-container 2>nul || exit 0"
-                    bat "docker rm ${IMAGE_NAME}-container 2>nul || exit 0"
+                    // Use the new dynamic CONTAINER_NAME variable
+                    bat "docker stop ${CONTAINER_NAME} 2>nul || exit 0"
+                    bat "docker rm ${CONTAINER_NAME} 2>nul || exit 0"
                     
-                    bat "docker run -d -p ${PORT}:80 --name ${IMAGE_NAME}-container ${IMAGE_NAME}:${IMAGE_TAG}"
+                    // Use the dynamic CONTAINER_NAME in docker run
+                    bat "docker run -d -p ${PORT}:80 --name ${CONTAINER_NAME} ${IMAGE_NAME}:${IMAGE_TAG}"
                 }
             }
         }
@@ -46,9 +48,9 @@ pipeline {
     post {
         always {
             script {
-                // Clean up local container after testing to free resources
-                bat "docker stop ${IMAGE_NAME}-container 2>nul || exit 0"
-                bat "docker rm ${IMAGE_NAME}-container 2>nul || exit 0"
+                // Ensure the post-action cleanup uses the dynamic name too
+                bat "docker stop ${CONTAINER_NAME} 2>nul || exit 0"
+                bat "docker rm ${CONTAINER_NAME} 2>nul || exit 0"
             }
         }
         failure {
