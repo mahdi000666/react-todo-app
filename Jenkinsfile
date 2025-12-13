@@ -49,7 +49,7 @@ pipeline {
                     '''
                     
                     // Wait to ensure port is released (FIXED: removed >nul)
-                    bat 'timeout /t 3 /nobreak'
+                    bat 'powershell -Command "Start-Sleep -Seconds 3"'
                     
                     // Check if port 8080 is in use and kill the process if needed
                     bat '''
@@ -57,7 +57,7 @@ pipeline {
                         if not errorlevel 1 (
                             echo Port 8080 is in use, killing process...
                             for /f "tokens=5" %%i in ('netstat -aon ^| findstr :8080') do taskkill /F /PID %%i
-                            timeout /t 2 /nobreak
+                            powershell -Command "Start-Sleep -Seconds 2"
                         )
                     '''
                     
