@@ -40,34 +40,31 @@ pipeline {
                     def imageName = "react-node20:${imageTag}"
                     def containerName = "react_${imageTag}"
                     
-                    // Cleanup existing containers using PowerShell
-                    powershell '''
-                        # Stop containers using port 8080
-                        docker ps -q --filter "publish=8080" | ForEach-Object { docker stop $_ } 2>$null
-                        # Remove old react containers
-                        docker ps -aq --filter "name=react_" | ForEach-Object { docker stop $_; docker rm $_ } 2>$null
-                    '''
+                    // Cleanup: Stop and remove any containers using port 8080
+                    bat 'for /f "tokens=*" %%i in (\'docker ps -q --filter publish=8080\') do docker stop %%i 2>nul'
+                    bat 'for /f "tokens=*" %%i in (\'docker ps -aq --filter name=react_\') do (docker stop %%i 2>nul & docker rm %%i 2>nul)'
                     
-                    // Wait to ensure port is released (FIXED: removed >nul)
-                    bat 'powershell -Command "Start-Sleep -Seconds 3"'
+                    // Wait a bit
+                    bat 'ping 127.0.0.1 -n 4 > nul'
                     
-                    // Check if port 8080 is in use and kill the process if needed
+                    // Check if port 8080 is still in use (not Docker)
                     bat '''
                         netstat -aon | findstr :8080 >nul
                         if not errorlevel 1 (
                             echo Port 8080 is in use, killing process...
                             for /f "tokens=5" %%i in ('netstat -aon ^| findstr :8080') do taskkill /F /PID %%i
-                            powershell -Command "Start-Sleep -Seconds 2"
+                            ping 127.0.0.1 -n 3 > nul
                         )
                     '''
                     
-                    // For branches without parallel builds, build the image
+                    // For main branch and other non-dev, non-tag branches, build the Docker image
                     if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
                         bat "docker build --no-cache -t ${imageName} ."
                     }
                     
                     // Run the container
                     bat "docker run -d -p 8080:80 --name ${containerName} ${imageName}"
+                    
                     // Wait for container to start
                     bat 'ping 127.0.0.1 -n 6 > nul'
                 }
