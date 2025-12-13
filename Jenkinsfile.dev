@@ -7,12 +7,16 @@ pipeline {
         COMMIT_SHA = env.GIT_COMMIT.take(7)
         BUILD_TAG_SUFFIX = "${env.BUILD_NUMBER}-${COMMIT_SHA}"
         
+        // Dynamic PORT: Base port 8080 + Build Number
+        // Example: Build 18 uses 8098, Build 19 uses 8099
+        PORT = 8080 + Integer.parseInt(env.BUILD_NUMBER)
+        
         // Define image tags using the base variables (ensures uniqueness)
         IMAGE_TAG_18 = "react-dev-node18:${BUILD_TAG_SUFFIX}"
         IMAGE_TAG_20 = "react-dev-node20:${BUILD_TAG_SUFFIX}"
         
-        // Define the unique container name
-        CONTAINER_NAME = "react-dev-container-${env.BUILD_NUMBER}"
+        // Define the unique container name (using a static base name + port number for easy reference)
+        CONTAINER_NAME = "react-dev-container-${PORT}"
     }
 
     stages {
@@ -65,8 +69,10 @@ pipeline {
                     bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
                     bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
 
-                    // Use the newly built image tag and container name
-                    bat "docker run -d -p 8080:80 --name ${env.CONTAINER_NAME} ${env.IMAGE_TAG_20}"
+                    // Use the dynamic port and container name
+                    bat "docker run -d -p ${env.PORT}:80 --name ${env.CONTAINER_NAME} ${env.IMAGE_TAG_20}"
+                    
+                    // You MUST update smoke-test.bat to use this dynamic port variable.
                     bat 'timeout /t 5 /nobreak'
                 }
             }
@@ -74,8 +80,9 @@ pipeline {
         
         stage('Smoke Test') {
             steps {
-                bat 'call smoke-test.bat' [cite: 59]
-                archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true [cite: 59]
+                // Must pass the dynamic port to the script
+                bat "call smoke-test.bat ${env.PORT}"
+                archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
             }
         }
         
