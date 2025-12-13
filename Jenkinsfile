@@ -48,8 +48,8 @@ pipeline {
                         docker ps -aq --filter "name=react_" | ForEach-Object { docker stop $_; docker rm $_ } 2>$null
                     '''
                     
-                    // Wait to ensure port is released
-                    bat 'timeout /t 3 /nobreak >nul'
+                    // Wait to ensure port is released (FIXED: removed >nul)
+                    bat 'timeout /t 3 /nobreak'
                     
                     // Check if port 8080 is in use and kill the process if needed
                     bat '''
@@ -57,7 +57,7 @@ pipeline {
                         if not errorlevel 1 (
                             echo Port 8080 is in use, killing process...
                             for /f "tokens=5" %%i in ('netstat -aon ^| findstr :8080') do taskkill /F /PID %%i
-                            timeout /t 2 /nobreak >nul
+                            timeout /t 2 /nobreak
                         )
                     '''
                     
