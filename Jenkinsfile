@@ -18,7 +18,6 @@ pipeline {
             steps {
                 script {
                     if (env.TAG_NAME || env.BRANCH_NAME == 'dev') {
-                        // Parallel build for dev and tags
                         parallel (
                             'Node 18': {
                                 bat "docker build --no-cache --build-arg NODE_VERSION=18 -t react-node18:${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)} ."
@@ -28,7 +27,6 @@ pipeline {
                             }
                         )
                     } else {
-                        // Simple build for PRs and main
                         bat 'npm run build'
                     }
                 }
@@ -42,9 +40,14 @@ pipeline {
                     def imageName = "react-node20:${imageTag}"
                     def containerName = "react_${imageTag}"
                     
-                    // Remove old container if exists
-                    bat "docker stop ${containerName} 2>nul || exit 0"
-                    bat "docker rm ${containerName} 2>nul || exit 0"
+                    // CRITICAL: Stop all containers on port 8080
+                    bat '''
+                        for /f "tokens=*" %%i in ('docker ps -q --filter "publish=8080"') do docker stop %%i 2>nul
+                        for /f "tokens=*" %%i in ('docker ps -aq --filter "name=react_"') do (
+                            docker stop %%i 2>nul
+                            docker rm %%i 2>nul
+                        )
+                    '''
                     
                     // For branches without parallel builds, build the image
                     if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
@@ -52,8 +55,6 @@ pipeline {
                     }
                     
                     bat "docker run -d -p 8080:80 --name ${containerName} ${imageName}"
-                    
-                    // Wait 5 seconds for container to start
                     bat 'ping 127.0.0.1 -n 6 > nul'
                 }
             }
@@ -87,8 +88,6 @@ pipeline {
                     
                     bat "docker stop ${containerName} 2>nul || exit 0"
                     bat "docker rm ${containerName} 2>nul || exit 0"
-                    
-                    // Optional: clean up old images to save space
                     bat "docker rmi react-node20:${imageTag} 2>nul || exit 0"
                 }
             }
