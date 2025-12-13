@@ -1,21 +1,6 @@
 pipeline {
     agent any
     
-    // --- CONST-CORRECTNESS & EFFICIENCY: Define all variables once ---
-    environment {
-        // 1. Define the commit SHA once
-        COMMIT_SHA = env.GIT_COMMIT.take(7)
-        
-        // 2. DYNAMIC PORT: Base port 8080 + Build Number (prevents port conflicts)
-        PORT = 8080 + Integer.parseInt(env.BUILD_NUMBER)
-        
-        // 3. Define clean, consistent image and container names
-        IMAGE_TAG_18 = "react-dev-node18:${COMMIT_SHA}"
-        IMAGE_TAG_20 = "react-dev-node20:${COMMIT_SHA}"
-        // Unique container name for each build (resolves Conflict error)
-        CONTAINER_NAME = "react_dev_${env.BUILD_NUMBER}" 
-    }
-
     stages {
         stage('Checkout') {
             steps {
@@ -29,26 +14,22 @@ pipeline {
             }
         }
         
-        stage('Cleanup Images') {
-            steps {
-                echo "Cleaning up previous image tags to prevent conflicts."
-                bat "docker rmi ${env.IMAGE_TAG_18} 2>nul || exit 0"
-                bat "docker rmi ${env.IMAGE_TAG_20} 2>nul || exit 0"
-            }
-        }
-        
         stage('Build (parallel)') {
             parallel {
                 stage('Build Node18') {
                     steps {
-                        // Use centralized environment variables (cleaner than defining `commit` locally)
-                        bat "docker build --no-cache --build-arg NODE_VERSION=18 -t ${env.IMAGE_TAG_18} ."
+                        script {
+                            def commit = env.GIT_COMMIT.take(7)
+                            bat "docker build --build-arg NODE_VERSION=18 -t react-dev-node18:${commit} ."
+                        }
                     }
                 }
                 stage('Build Node20') {
                     steps {
-                        // Use centralized environment variables
-                        bat "docker build --no-cache --build-arg NODE_VERSION=20 -t ${env.IMAGE_TAG_20} ."
+                        script {
+                            def commit = env.GIT_COMMIT.take(7)
+                            bat "docker build --build-arg NODE_VERSION=20 -t react-dev-node20:${commit} ."
+                        }
                     }
                 }
             }
@@ -56,20 +37,17 @@ pipeline {
         
         stage('Run Docker') {
             steps {
-                // Defensive stop/rm using the unique CONTAINER_NAME (resolves current log error)
-                bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
-                bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
-                
-                // Deploy using DYNAMIC PORT and unique CONTAINER_NAME
-                bat "docker run -d -p ${env.PORT}:80 --name ${env.CONTAINER_NAME} ${env.IMAGE_TAG_20}"
-                bat 'timeout /t 5 /nobreak'
+                script {
+                    def commit = env.GIT_COMMIT.take(7)
+                    bat "docker run -d -p 8080:80 --name react_dev_${BUILD_NUMBER} react-dev-node20:${commit}"
+                    bat 'timeout /t 5 /nobreak'
+                }
             }
         }
         
         stage('Smoke Test') {
             steps {
-                // FIX: Pass the dynamic port number to smoke-test.bat
-                bat "call smoke-test.bat ${env.PORT}"
+                bat 'call smoke-test.bat'
                 archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
             }
         }
@@ -83,24 +61,16 @@ pipeline {
         
         stage('Cleanup') {
             steps {
-                // Final cleanup uses unique CONTAINER_NAME
-                bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
-                bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
+                bat "docker stop react_dev_${BUILD_NUMBER} || exit 0"
+                bat "docker rm react_dev_${BUILD_NUMBER} || exit 0"
             }
         }
     }
     
     post {
         always {
-            // Defensive cleanup using unique CONTAINER_NAME
-            bat "docker stop ${env.CONTAINER_NAME} 2>nul || exit 0"
-            bat "docker rm ${env.CONTAINER_NAME} 2>nul || exit 0"
-        }
-        failure {
-            echo "✗ Pipeline failed on branch dev"
-        }
-        success {
-            echo "✓ Pipeline completed successfully on branch dev"
+            bat 'docker stop react_dev_%BUILD_NUMBER% || exit 0'
+            bat 'docker rm react_dev_%BUILD_NUMBER% || exit 0'
         }
     }
 }
