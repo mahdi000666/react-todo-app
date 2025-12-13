@@ -40,7 +40,7 @@ pipeline {
                     def imageName = "react-node20:${imageTag}"
                     def containerName = "react_${imageTag}"
                     
-                    // Cleanup existing containers using PowerShell (more reliable on Windows)
+                    // Cleanup existing containers using PowerShell
                     powershell '''
                         # Stop containers using port 8080
                         docker ps -q --filter "publish=8080" | ForEach-Object { docker stop $_ } 2>$null
@@ -48,7 +48,20 @@ pipeline {
                         docker ps -aq --filter "name=react_" | ForEach-Object { docker stop $_; docker rm $_ } 2>$null
                     '''
                     
-                    // For branches without parallel builds (like main), build the image
+                    // Wait to ensure port is released
+                    bat 'timeout /t 3 /nobreak >nul'
+                    
+                    // Check if port 8080 is in use and kill the process if needed
+                    bat '''
+                        netstat -aon | findstr :8080 >nul
+                        if not errorlevel 1 (
+                            echo Port 8080 is in use, killing process...
+                            for /f "tokens=5" %%i in ('netstat -aon ^| findstr :8080') do taskkill /F /PID %%i
+                            timeout /t 2 /nobreak >nul
+                        )
+                    '''
+                    
+                    // For branches without parallel builds, build the image
                     if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
                         bat "docker build --no-cache -t ${imageName} ."
                     }
