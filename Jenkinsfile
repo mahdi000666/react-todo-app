@@ -34,31 +34,31 @@ pipeline {
         }
         
         stage('Run Docker') {
-            steps {
-                script {
-                    def imageTag = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
-                    def imageName = "react-node20:${imageTag}"
-                    def containerName = "react_${imageTag}"
-                    
-                    // CRITICAL: Stop all containers on port 8080
-                    bat '''
-                        for /f "tokens=*" %%i in ('docker ps -q --filter "publish=8080"') do docker stop %%i 2>nul
-                        for /f "tokens=*" %%i in ('docker ps -aq --filter "name=react_"') do (
-                            docker stop %%i 2>nul
-                            docker rm %%i 2>nul
-                        )
-                    '''
-                    
-                    // For branches without parallel builds, build the image
-                    if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
-                        bat "docker build --no-cache -t ${imageName} ."
-                    }
-                    
-                    bat "docker run -d -p 8080:80 --name ${containerName} ${imageName}"
-                    bat 'ping 127.0.0.1 -n 6 > nul'
-                }
+    steps {
+        script {
+            def imageTag = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
+            def imageName = "react-node20:${imageTag}"
+            def containerName = "react_${imageTag}"
+            
+            // FIXED: Use single % signs in FOR loops
+            bat '''
+                for /f "tokens=*" %i in ('docker ps -q --filter "publish=8080"') do docker stop %i 2>nul
+                for /f "tokens=*" %i in ('docker ps -aq --filter "name=react_"') do (
+                    docker stop %i 2>nul
+                    docker rm %i 2>nul
+                )
+            '''
+            
+            // For main branch, we need to build the image since it wasn't built in the Build stage
+            if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
+                bat "docker build --no-cache -t ${imageName} ."
             }
+            
+            bat "docker run -d -p 8080:80 --name ${containerName} ${imageName}"
+            bat 'ping 127.0.0.1 -n 6 > nul'
         }
+    }
+}
         
         stage('Smoke Test') {
             steps {
