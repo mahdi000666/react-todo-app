@@ -1,25 +1,61 @@
 pipeline {
     agent any
+    
     stages {
-        stage('Checkout') { steps { checkout scm } }
-        stage('Setup') { steps { bat 'npm ci' } }
-        stage('Build') { steps { bat 'npm run build' } }
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Setup') {
+            steps {
+                bat 'npm ci --prefer-offline'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                bat 'npm run build'
+            }
+        }
+        
         stage('Run Docker') {
             steps {
-                bat 'docker build -t react-pr:%GIT_COMMIT% .'
-                bat 'docker run -d -p 8080:80 --name pr_%BUILD_NUMBER% react-pr:%GIT_COMMIT%'
+                script {
+                    def commit = env.GIT_COMMIT.take(7)
+                    bat "docker build -t react-pr:${commit} ."
+                    bat "docker run -d -p 8080:80 --name pr_${BUILD_NUMBER} react-pr:${commit}"
+                    bat 'timeout /t 5 /nobreak'
+                }
             }
         }
+        
         stage('Smoke Test') {
-            steps { bat 'call smoke-test.bat || exit /b 1' }
+            steps {
+                bat 'call smoke-test.bat'
+                archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
+            }
         }
+        
         stage('Archive Artifacts') {
-            steps { archiveArtifacts artifacts: 'dist/**', allowEmptyArchive: true }
+            steps {
+                archiveArtifacts artifacts: 'dist/**', allowEmptyArchive: true
+            }
         }
+        
         stage('Cleanup') {
             steps {
-                bat 'docker rm -f pr_%BUILD_NUMBER% || exit /b 0'
+                bat "docker stop pr_${BUILD_NUMBER} || exit 0"
+                bat "docker rm pr_${BUILD_NUMBER} || exit 0"
             }
+        }
+    }
+    
+    post {
+        always {
+            bat 'docker stop pr_%BUILD_NUMBER% || exit 0'
+            bat 'docker rm pr_%BUILD_NUMBER% || exit 0'
         }
     }
 }

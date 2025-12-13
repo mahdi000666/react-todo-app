@@ -2,41 +2,89 @@ pipeline {
     agent any
     
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Setup') {
+            steps {
+                bat 'npm ci --prefer-offline'
+            }
+        }
+        
         stage('Build') {
             steps {
-                bat 'npm install'
-            }
-        }
-        
-        stage('Test') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'dev'
-                    branch 'feature/*'
+                script {
+                    if (env.TAG_NAME || env.BRANCH_NAME == 'dev') {
+                        // Parallel build for dev and tags
+                        parallel (
+                            'Node 18': {
+                                bat 'docker build --build-arg NODE_VERSION=18 -t react-node18:%BUILD_NUMBER% .'
+                            },
+                            'Node 20': {
+                                bat 'docker build --build-arg NODE_VERSION=20 -t react-node20:%BUILD_NUMBER% .'
+                            }
+                        )
+                    } else {
+                        // Simple build for PRs
+                        bat 'npm run build'
+                    }
                 }
             }
+        }
+        
+        stage('Run Docker') {
             steps {
-                bat 'npm test'
+                script {
+                    def imageName = env.TAG_NAME ? "react:${TAG_NAME}" : "react-node20:${BUILD_NUMBER}"
+                    if (!env.TAG_NAME && env.BRANCH_NAME != 'dev') {
+                        bat "docker build -t ${imageName} ."
+                    }
+                    bat "docker run -d -p 8080:80 --name react_${BUILD_NUMBER} ${imageName}"
+                    bat 'timeout /t 5 /nobreak'
+                }
             }
         }
         
-        stage('Deploy Staging') {
-            when {
-                branch 'dev'
-            }
+        stage('Smoke Test') {
             steps {
-                echo "Deploying to staging..."
+                bat 'call smoke-test.bat'
+                archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
             }
         }
         
-        stage('Deploy Production') {
-            when {
-                branch 'main'
-            }
+        stage('Archive Artifacts') {
             steps {
-                echo "Deploying to production..."
+                script {
+                    if (env.TAG_NAME) {
+                        archiveArtifacts artifacts: 'dist/**,*.log', allowEmptyArchive: false
+                    } else {
+                        archiveArtifacts artifacts: 'dist/**', allowEmptyArchive: true
+                    }
+                }
             }
+        }
+        
+        stage('Cleanup') {
+            steps {
+                bat "docker stop react_${BUILD_NUMBER} || exit 0"
+                bat "docker rm react_${BUILD_NUMBER} || exit 0"
+            }
+        }
+    }
+    
+    post {
+        always {
+            bat 'docker stop react_%BUILD_NUMBER% || exit 0'
+            bat 'docker rm react_%BUILD_NUMBER% || exit 0'
+        }
+        success {
+            echo "✓ Pipeline completed successfully"
+        }
+        failure {
+            echo "✗ Pipeline failed"
         }
     }
 }
